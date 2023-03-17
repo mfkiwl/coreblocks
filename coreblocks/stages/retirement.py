@@ -14,13 +14,15 @@ class Retirement(Elaboratable):
         r_rat_commit: Method,
         free_rf_put: Method,
         rf_free: Method,
-        lsu_commit: Method
+        lsu_commit: Method,
+        trigger_int: Method
     ):
         self.rob_retire = rob_retire
         self.r_rat_commit = r_rat_commit
         self.free_rf_put = free_rf_put
         self.rf_free = rf_free
         self.lsu_commit = lsu_commit
+        self.trigger_int = trigger_int
 
         self.instret_csr = DoubleCounterCSR(gen_params, CSRAddress.INSTRET, CSRAddress.INSTRETH)
 
@@ -31,6 +33,9 @@ class Retirement(Elaboratable):
 
         with Transaction().body(m):
             rob_entry = self.rob_retire(m)
+
+            with m.If(rob_entry.interrupt):
+                self.trigger_int(m)
 
             # set rl_dst -> rp_dst in R-RAT
             rat_out = self.r_rat_commit(m, rl_dst=rob_entry.rob_data.rl_dst, rp_dst=rob_entry.rob_data.rp_dst)

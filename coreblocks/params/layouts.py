@@ -123,6 +123,8 @@ class RATLayouts:
         self.rat_commit_in = [("rl_dst", gen_params.isa.reg_cnt_log), ("rp_dst", gen_params.phys_regs_bits)]
         self.rat_commit_out = [("old_rp_dst", gen_params.phys_regs_bits)]
 
+        self.rat_regs = [(f"x{i}", gen_params.phys_regs_bits) for i in range(gen_params.isa.reg_cnt)]
+
 
 class ROBLayouts:
     def __init__(self, gen_params: GenParams):
@@ -137,10 +139,11 @@ class ROBLayouts:
 
         self.internal_layout = [
             ("rob_data", self.data_layout),
+            ("interrupt", 1),
             ("done", 1),
         ]
 
-        self.retire_layout = [("rob_data", self.data_layout), ("rob_id", gen_params.rob_entries_bits)]
+        self.retire_layout = [("rob_data", self.data_layout), ("rob_id", gen_params.rob_entries_bits), ("interrupt", 1)]
 
 
 class RSInterfaceLayouts:
