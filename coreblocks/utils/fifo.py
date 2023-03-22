@@ -64,6 +64,18 @@ class BasicFifo(Elaboratable):
         self.clear.add_conflict(self.read, Priority.LEFT)
         self.clear.add_conflict(self.write, Priority.LEFT)
 
+    def get_read(self):
+        """
+        Return `read` method. This function is created for interface compatibility with MultiportFifo.
+        """
+        return self.read
+
+    def get_write(self):
+        """
+        Return `write` method. This function is created for interface compatibility with MultiportFifo.
+        """
+        return self.write
+
     def elaborate(self, platform) -> Module:
         def mod_incr(sig: Value, mod: int) -> Value:
             # perform (sig+1)%mod operation
@@ -112,10 +124,12 @@ class BasicFifo(Elaboratable):
         return m
 
 
-def popcount(m: Module, x: Signal) -> Signal:
+def popcount(m: Module, s: Signal) -> Signal:
     """
     Implementation of popcount algorithm from https://en.wikipedia.org/wiki/Hamming_weight
     """
+    x = Signal.like(s)
+    m.d.comb += x.eq(s)
     if x.shape().width > 64:
         raise ValueError("Current popcount implementation don't support signals longer than 64 bits")
 
@@ -156,25 +170,46 @@ def popcount(m: Module, x: Signal) -> Signal:
 
 
 class MultiportFifo(Elaboratable):
-    def __init__(self, layout: MethodLayout, depth: int, port_count: int, fifo_count: int) -> None:
+    def __init__(
+        self, layout: MethodLayout, depth: int, port_count: int, fifo_count: int, *, init: Optional[List[int]] = None
+    ) -> None:
         self.layout = layout
         self.width = len(Record(self.layout))
         self.depth = depth
         self.port_count = port_count
         self.fifo_count = fifo_count
+        self.init = init
+
+        self.connected_reads = 0
+        self.connected_writes = 0
 
         self._read_methods = [Method(o=self.layout) for _ in range(self.port_count)]
         self._write_methods = [Method(i=self.layout) for _ in range(self.port_count)]
         self.clear = Method()
 
-        self._selection_layout = {"valid": 1, "data": self.layout}
+        self._selection_layout = [("valid", 1), ("data", self.layout)]
 
         if self.depth % self.fifo_count != 0:
             raise ValueError("MultiportFifo depth must be divisable by fifo_count")
         if self.fifo_count < self.port_count:
             raise ValueError("MultiportFifo requires fifo_count >= port_count")
 
-    def order(self, m: Module, to_order: Array, ready: Signal, data_direction_from_out: bool = True) -> Array:
+        for method in self._read_methods:
+            self.clear.add_conflict(method, Priority.LEFT)
+        for method in self._write_methods:
+            self.clear.add_conflict(method, Priority.LEFT)
+
+    def get_read(self):
+        method = self._read_methods[self.connected_reads]
+        self.connected_reads = (self.connected_reads + 1) % self.port_count
+        return method
+
+    def get_write(self):
+        method = self._write_methods[self.connected_writes]
+        self.connected_writes = (self.connected_writes + 1) % self.port_count
+        return method
+
+    def order(self, m: Module, to_order: Array, ready_ordering: Signal, data_direction_from_out: bool = True) -> Array:
         """
         Put all ready elements from `to_order` to the begining of `out`
         """
@@ -183,12 +218,12 @@ class MultiportFifo(Elaboratable):
         out = Array([Record(self._selection_layout) for _ in range(count)])
 
         for j in range(count):
-            with m.If(ready[j]):
+            with m.If(ready_ordering[j]):
                 m.d.comb += out[selected_counter].valid.eq(1)
                 if data_direction_from_out:
-                    m.d.comb += to_order[j].eq(out[selected_counter])
+                    m.d.comb += to_order[j].eq(out[selected_counter].data)
                 else:
-                    m.d.comb += out[selected_counter].eq(to_order[j])
+                    m.d.comb += out[selected_counter].data.eq(to_order[j])
                 m.d.comb += selected_counter.eq(selected_counter + 1)
         return out
 
@@ -196,7 +231,10 @@ class MultiportFifo(Elaboratable):
         m = Module()
 
         sub_fifo_depth = self.depth // self.fifo_count
-        sub_fifos = [BasicFifo(self.layout, sub_fifo_depth) for i in range(self.fifo_count)]
+        sub_fifos = [
+            BasicFifo(self.layout, sub_fifo_depth, init=None if self.init is None else self.init[i :: self.fifo_count])
+            for i in range(self.fifo_count)
+        ]
         for i, sub_fifo in enumerate(sub_fifos):
             setattr(m.submodules, f"sub_fifo_{i}", sub_fifo)
 
@@ -215,20 +253,20 @@ class MultiportFifo(Elaboratable):
                             m.d.comb += ordered_read_outs[j].data.eq(sub_fifos[(i + j) % self.fifo_count].read(m))
                     for j in range(self.port_count + 1):
                         with m.If(read_grants_count):
-                            m.next(f"current_read_{(i+j)%self.fifo_count}")
+                            m.next = f"current_read_{(i+j)%self.fifo_count}"
 
         for i in range(self.port_count):
 
-            @def_method(m, self._read_methods[i], read_ready)
+            @def_method(m, self._read_methods[i], ready=read_ready)
             def _() -> ValueLike:
                 m.d.comb += read_grants[i].eq(1)
                 return read_outs[i]
 
         write_ready = Signal()
-        write_grants = Signal(len(self._write_methods))
-        write_grants_count = popcount(m, write_grants)
+        write_granttts = Signal(len(self._write_methods), reset=0)
+        write_granttts_count = popcount(m, write_granttts)
         write_ins = [Record(self.layout) for _ in self._write_methods]
-        ordered_write_ins = self.order(m, Array(write_ins), write_grants, data_direction_from_out=False)
+        ordered_write_ins = self.order(m, Array(write_ins), write_granttts, data_direction_from_out=False)
 
         with m.FSM():
             for i in range(self.fifo_count):
@@ -238,16 +276,17 @@ class MultiportFifo(Elaboratable):
                         with Transaction().body(m, request=ordered_write_ins[j].valid):
                             sub_fifos[(i + j) % self.fifo_count].write(m, ordered_write_ins[j].data)
                     for j in range(self.port_count + 1):
-                        with m.If(write_grants_count):
-                            m.next(f"current_write_{(i+j)%self.fifo_count}")
+                        with m.If(write_granttts_count):
+                            m.next = f"current_write_{(i+j)%self.fifo_count}"
 
         for i in range(self.port_count):
 
-            @def_method(m, self._write_methods[i], write_ready)
-            def _(arg: Record) -> None:
-                m.d.comb += write_grants[i].eq(1)
-                m.d.comb += write_ins[i].eq(arg)
+            @def_method(m, self._write_methods[i], ready=write_ready)
+            def _(data: Record) -> None:
+                m.d.comb += write_granttts[i].eq(1)
+                m.d.comb += write_ins[i].eq(data)
 
-        self.clear = MethodProduct([sub_fifo.clear for sub_fifo in sub_fifos])
+        m.submodules.clear_product = clear_product = MethodProduct([sub_fifo.clear for sub_fifo in sub_fifos])
+        self.clear.proxy(m, clear_product.method)
 
         return m
