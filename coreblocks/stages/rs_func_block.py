@@ -54,6 +54,7 @@ class RSFuncBlock(Elaboratable):
         self.select = Method(o=self.rs_layouts.select_out)
         self.update = Method(i=self.rs_layouts.update_in)
         self.get_result = Method(o=self.fu_layouts.accept)
+        self.clear = Method()
 
     def elaborate(self, platform):
         m = Module()
@@ -75,11 +76,15 @@ class RSFuncBlock(Elaboratable):
             m.submodules[f"wakeup_select_{n}"] = wakeup_select
 
         m.submodules.collector = collector = Collector([func_unit.accept for func_unit in self.func_units])
+        m.submodules.clear_product = clear_product = MethodProduct(
+            [func_unit.clear for func_unit in self.func_units] + [rs.clear]
+        )
 
         self.insert.proxy(m, self.rs.insert)
         self.select.proxy(m, self.rs.select)
         self.update.proxy(m, self.rs.update)
         self.get_result.proxy(m, collector.method)
+        self.clear.proxy(m, clear_product.method)
 
         return m
 

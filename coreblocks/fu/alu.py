@@ -7,6 +7,7 @@ from coreblocks.transactions.lib import *
 
 from coreblocks.params import *
 from coreblocks.utils import OneHotSwitch
+from coreblocks.utils.fifo import BasicFifo
 
 from coreblocks.fu.fu_decoder import DecoderManager
 from enum import IntFlag, auto
@@ -113,12 +114,13 @@ class AluFuncUnit(Elaboratable):
 
         self.issue = Method(i=layouts.issue)
         self.accept = Method(o=layouts.accept)
+        self.clear = Method()
 
     def elaborate(self, platform):
         m = Module()
 
         m.submodules.alu = alu = Alu(self.gen)
-        m.submodules.fifo = fifo = FIFO(self.gen.get(FuncUnitLayouts).accept, 2)
+        m.submodules.fifo = fifo = BasicFifo(self.gen.get(FuncUnitLayouts).accept, 2)
         m.submodules.decoder = decoder = AluFn.get_decoder(self.gen)
 
         @def_method(m, self.accept)
@@ -134,6 +136,10 @@ class AluFuncUnit(Elaboratable):
             m.d.comb += alu.in2.eq(Mux(arg.imm, arg.imm, arg.s2_val))
 
             fifo.write(m, rob_id=arg.rob_id, result=alu.out, rp_dst=arg.rp_dst)
+
+        @def_method(m, self.clear)
+        def _():
+            fifo.clear(m)
 
         return m
 

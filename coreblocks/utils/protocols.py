@@ -23,6 +23,7 @@ class FuncUnit(HasElaborate, Protocol):
     optypes: set[OpType]
     issue: Method
     accept: Method
+    # TODO: add clear: Method once all FUs are updated
 
 
 class FuncBlock(HasElaborate, Protocol):

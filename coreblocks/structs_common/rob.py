@@ -14,6 +14,8 @@ class ReorderBuffer(Elaboratable):
         self.put = Method(i=layouts.data_layout, o=layouts.id_layout)
         self.mark_done = Method(i=layouts.id_layout)
         self.retire = Method(o=layouts.retire_layout)
+        self.can_flush = Method(o=layouts.can_flush_layout)
+        self.flush = Method(o=layouts.flush_layout)
         self.interrupt = Method()
         self.data = Array(Record(layouts.internal_layout) for _ in range(2**gen_params.rob_entries_bits))
         self.single_entry = Signal()
@@ -37,7 +39,7 @@ class ReorderBuffer(Elaboratable):
             return {
                 "rob_data": self.data[start_idx].rob_data,
                 "interrupt": self.data[start_idx].interrupt,
-                "rob_id": start_idx
+                "rob_id": start_idx,
             }
 
         @def_method(m, self.put, ready=put_possible)
@@ -46,6 +48,15 @@ class ReorderBuffer(Elaboratable):
             m.d.sync += self.data[end_idx].done.eq(0)
             m.d.sync += end_idx.eq(end_idx + 1)
             return end_idx
+
+        @def_method(m, self.can_flush)
+        def _():
+            return start_idx != end_idx
+
+        @def_method(m, self.flush)
+        def _():
+            m.d.sync += start_idx.eq(start_idx + 1)
+            return self.data[start_idx].rob_data.rp_dst
 
         @def_method(m, self.interrupt)
         def _():
