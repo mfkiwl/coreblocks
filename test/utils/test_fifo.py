@@ -114,10 +114,9 @@ class TestBasicFifo(TestCaseWithSimulator):
                         cycle+=1
                         yield  # random delay
 
-                    if random.random() < 0.005 and (len(clears)==0 or clears[-1][0]!=cycle):
-                        yield from fifoc.fifo_clear.call_try()
-#                        if (yield from fifoc.fifo_clear.call_try()) is None:
-#                            assert("Clearing failed")
+                    if port_id == 0 and random.random() < 0.005:
+                        if (yield from fifoc.fifo_clear.call_try()) is None:
+                            assert("Clearing failed")
                         clears.append((cycle, port_id))
                         cycle+=1
 
