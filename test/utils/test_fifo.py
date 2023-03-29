@@ -83,7 +83,7 @@ params_c = [
 
 @parameterized_class(
     ("name", "depth", "init_len", "port_count", "fifo_count", "name_constr", "fifo_constructor"),
-    [dinit + (1,1) + constr for dinit in params_dinit for constr in params_c] + [(params_dinit[4] + (2,2)+params_c[1])],
+    [dinit + (1,1) + constr for dinit in params_dinit for constr in params_c] + [(params_dinit[3] + (2,2)+params_c[1])],
 )
 class TestBasicFifo(TestCaseWithSimulator):
     depth: int
@@ -96,14 +96,13 @@ class TestBasicFifo(TestCaseWithSimulator):
         init_values = [x + 1 for x in range(self.init_len)]
 
         fifoc = FifoTestCircuit(depth=self.depth, init=init_values, port_count=self.port_count, fifo_count=self.fifo_count, fifo_constructor=self.fifo_constructor)
-#        expq = deque(reversed(init_values))  # first expected element is at the start of init_list
         writed = [(-1,-1,i) for i in init_values] # (cycle_id, port_id, value)
         readed = []
         clears = []
 
         dones = [ False for _ in range(self.port_count)]
 
-        cycles = 7
+        cycles = 256
         random.seed(42)
 
         def source_generator(port_id : int):
@@ -115,11 +114,15 @@ class TestBasicFifo(TestCaseWithSimulator):
                         cycle+=1
                         yield  # random delay
 
-                    if random.random() < 0.005:
-                        yield from fifoc.fifo_clear.call()
+                    if random.random() < 0.005 and (len(clears)==0 or clears[-1][0]!=cycle):
+                        yield from fifoc.fifo_clear.call_try()
+#                        if (yield from fifoc.fifo_clear.call_try()) is None:
+#                            assert("Clearing failed")
                         clears.append((cycle, port_id))
+                        cycle+=1
 
                     v = random.randrange(2**fifoc.fifo.width)
+                    yield Settle()
                     while (yield from fifoc.fifo_writes[port_id].call_try(data=v)) is None: 
                         cycle+=1
                     writed.append((cycle, port_id, v))
@@ -139,7 +142,6 @@ class TestBasicFifo(TestCaseWithSimulator):
                     v = yield from fifoc.fifo_reads[port_id].call_try()
                     if v is not None:
                         readed.append((cycle, port_id, v["data"]))
-#                    self.assertEqual(v["data"], expq.pop())
             return target
 
         def checker():
@@ -147,15 +149,23 @@ class TestBasicFifo(TestCaseWithSimulator):
                 yield
             readed.sort()
             writed.sort()
+            INF_INT=1000000000
+            clears.append((INF_INT,-1))
             
-            print(readed)
-            print(writed)
             write_it=0
-            for cycle, port_id, val in readed:
+            clear_it=0
+            for i,(cycle, port_id, val) in enumerate(readed):
+                while cycle>clears[clear_it][0]:
+                    while writed[write_it][0]<clears[clear_it][0]:
+                        #print(writed[write_it],clears[clear_it])
+                        write_it+=1
+                    if write_it>=len(writed):
+                        break
+                    clear_it+=1
+                #print(clears)
+                #print("odczytana:",val, "zapisana:",writed[write_it], "cykl_odczytu:", cycle, "port", port_id)
                 self.assertEqual(val, writed[write_it][2])
                 write_it+=1
-
-            print("End")
 
 
         with self.run_simulation(fifoc) as sim:

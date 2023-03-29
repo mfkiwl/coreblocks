@@ -243,6 +243,8 @@ class MultiportFifo(Elaboratable):
     def elaborate(self, platform) -> Module:
         m = Module()
 
+        clear_signal = Signal()
+
         sub_fifo_depth = self.depth // self.fifo_count
         sub_fifos = [
             BasicFifo(self.layout, sub_fifo_depth, init=None if self.init is None else self.init[i :: self.fifo_count])
@@ -251,7 +253,7 @@ class MultiportFifo(Elaboratable):
         for i, sub_fifo in enumerate(sub_fifos):
             setattr(m.submodules, f"sub_fifo_{i}", sub_fifo)
 
-        read_ready = Signal()
+        read_ready_list = [Signal() for _ in range(self.port_count)]
         read_grants = Signal(len(self._read_methods))
         read_grants_count = popcount(m, read_grants)
         read_outs = [Record(self.layout) for _ in self._read_methods]
@@ -260,50 +262,61 @@ class MultiportFifo(Elaboratable):
         with m.FSM():
             for i in range(self.fifo_count):
                 with m.State(f"current_read_{i}"):
-                    m.d.comb += read_ready.eq(sub_fifos[i].read.ready)
                     for j in range(self.port_count):
+                        selected_sub_fifo = sub_fifos[(i + j) % self.fifo_count]
+                        m.d.comb += read_ready_list[j].eq(selected_sub_fifo.read.ready)
                         with Transaction().body(m, request=ordered_read_outs[j].valid):
-                            m.d.comb += ordered_read_outs[j].data.eq(sub_fifos[(i + j) % self.fifo_count].read(m))
+                            m.d.comb += ordered_read_outs[j].data.eq(selected_sub_fifo.read(m))
                     for j in range(self.port_count + 1):
                         with m.Switch(read_grants_count):
                             with m.Case(j):
                                 name_of_next = f"current_read_{(i+j)%self.fifo_count}"
                                 m.next = name_of_next
+                    with m.If(clear_signal):
+                        m.next = "current_read_0"
+
         for i in range(self.port_count):
 
-            @def_method(m, self._read_methods[i], ready=read_ready)
+            @def_method(m, self._read_methods[i], ready=read_ready_list[i])
             def _() -> ValueLike:
                 m.d.comb += read_grants[i].eq(1)
                 return read_outs[i]
 
-        write_ready = Signal()
+        write_ready_list = [Signal() for _ in range(self.port_count)]
         write_granttts = Signal(len(self._write_methods), reset=0)
         write_granttts_count = popcount(m, write_granttts)
         write_ins = [Record(self.layout) for _ in self._write_methods]
         ordered_write_ins = self.order(m, Array(write_ins), write_granttts, data_direction_from_out=False)
 
-# TODO FIX BUG with ready signals
-
-        with m.FSM():
+        write_start_state = "current_write_0" if self.init is None else f"current_write_{len(self.init)%self.fifo_count}"
+        with m.FSM(write_start_state):
             for i in range(self.fifo_count):
                 with m.State(f"current_write_{i}"):
-                    m.d.comb += write_ready.eq(sub_fifos[i].write.ready)
                     for j in range(self.port_count):
+                        selected_sub_fifo = sub_fifos[(i + j) % self.fifo_count]
+                        m.d.comb += write_ready_list[j].eq(selected_sub_fifo.write.ready)
                         with Transaction().body(m, request=ordered_write_ins[j].valid):
-                            sub_fifos[(i + j) % self.fifo_count].write(m, ordered_write_ins[j].data)
+                            selected_sub_fifo.write(m, ordered_write_ins[j].data)
                     for j in range(self.port_count + 1):
                         with m.Switch(write_granttts_count):
                             with m.Case(j):
                                 m.next = f"current_write_{(i+j)%self.fifo_count}"
+                    with m.If(clear_signal):
+                        m.next = "current_write_0"
 
         for i in range(self.port_count):
 
-            @def_method(m, self._write_methods[i], ready=write_ready)
+            @def_method(m, self._write_methods[i], ready=write_ready_list[i])
             def _(data: Record) -> None:
                 m.d.comb += write_granttts[i].eq(1)
                 m.d.comb += write_ins[i].eq(data)
 
-        m.submodules.clear_product = clear_product = MethodProduct([sub_fifo.clear for sub_fifo in sub_fifos])
-        self.clear.proxy(m, clear_product.method)
+
+        @def_method(m, self.clear)
+        def _():
+            m.submodules.clear_product = clear_product = MethodProduct([sub_fifo.clear for sub_fifo in sub_fifos])
+            clear_product.method(m)
+            m.d.comb += clear_signal.eq(1)
+
 
         return m
