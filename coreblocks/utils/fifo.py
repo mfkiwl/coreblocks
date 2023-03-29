@@ -128,28 +128,41 @@ def popcount(m: Module, s: Signal) -> Signal:
     """
     Implementation of popcount algorithm from https://en.wikipedia.org/wiki/Hamming_weight
     """
-    x = Signal.like(s)
-    m.d.comb += x.eq(s)
-    if x.shape().width > 64:
+    if s.shape().width > 64:
         raise ValueError("Current popcount implementation don't support signals longer than 64 bits")
+
+    popcount_sigs = []
+
+    popcount_sig0 = Signal.like(s)
+    m.d.comb += popcount_sig0.eq(s)
+    popcount_sigs.append(popcount_sig0)
 
     m1 = 0x5555555555555555
     m2 = 0x3333333333333333
     m4 = 0x0F0F0F0F0F0F0F0F
 
-    m.d.comb += x.eq(x - ((x >> 1) & m1))
-    if x.shape().width > 2:
-        m.d.comb += x.eq((x & m2) + ((x >> 2) & m2))
-    if x.shape().width > 4:
-        m.d.comb += x.eq((x + (x >> 4)) & m4)
-    if x.shape().width > 8:
-        m.d.comb += x.eq(x + (x >> 8))
-    if x.shape().width > 16:
-        m.d.comb += x.eq(x + (x >> 16))
-    if x.shape().width > 32:
-        m.d.comb += x.eq(x + (x >> 32))
-    m.d.comb += x.eq(x & 0x7F)
-    return x
+    popcount_sigs.append(popcount_sig1 := Signal.like(popcount_sigs[-1]))
+    m.d.comb += popcount_sig1.eq(popcount_sig0 - ((popcount_sig0 >> 1) & m1))
+
+    if s.shape().width > 2:
+        popcount_sigs.append(popcount_sig2 := Signal.like(popcount_sigs[-1]))
+        m.d.comb += popcount_sig2.eq((popcount_sig1 & m2) + ((popcount_sig1 >> 2) & m2))
+    if s.shape().width > 4:
+        popcount_sigs.append(popcount_sig3 := Signal.like(popcount_sigs[-1]))
+        m.d.comb += popcount_sig3.eq((popcount_sig2 + (popcount_sig2 >> 4)) & m4)
+    if s.shape().width > 8:
+        popcount_sigs.append(popcount_sig4 := Signal.like(popcount_sigs[-1]))
+        m.d.comb += popcount_sig4.eq(popcount_sig3 + (popcount_sig3 >> 8))
+    if s.shape().width > 16:
+        popcount_sigs.append(popcount_sig5 := Signal.like(popcount_sigs[-1]))
+        m.d.comb += popcount_sig5.eq(popcount_sig4 + (popcount_sig4 >> 16))
+    if s.shape().width > 32:
+        popcount_sigs.append(popcount_sig6 := Signal.like(popcount_sigs[-1]))
+        m.d.comb += popcount_sig6.eq(popcount_sig5 + (popcount_sig5 >> 32))
+    
+    popcount_sigs.append(popcount_res := Signal.like(popcount_sigs[-1]))
+    m.d.comb += popcount_res.eq(popcount_sigs[-2] & 0x7F)
+    return popcount_res
 
 
 # def select_N(m : Module, select_from: Array, max_to_select: int):
@@ -214,17 +227,17 @@ class MultiportFifo(Elaboratable):
         Put all ready elements from `to_order` to the begining of `out`
         """
         count = len(to_order)
-        selected_counter = Signal(log2_int(count))
+        selected_counters = [ Signal(log2_int(count)) for _ in range(count+1)]
         out = Array([Record(self._selection_layout) for _ in range(count)])
 
         for j in range(count):
             with m.If(ready_ordering[j]):
-                m.d.comb += out[selected_counter].valid.eq(1)
+                m.d.comb += out[selected_counters[j]].valid.eq(1)
                 if data_direction_from_out:
-                    m.d.comb += to_order[j].eq(out[selected_counter].data)
+                    m.d.comb += to_order[j].eq(out[selected_counters[j]].data)
                 else:
-                    m.d.comb += out[selected_counter].data.eq(to_order[j])
-                m.d.comb += selected_counter.eq(selected_counter + 1)
+                    m.d.comb += out[selected_counters[j]].data.eq(to_order[j])
+                m.d.comb += selected_counters[j+1].eq(selected_counters[j] + 1)
         return out
 
     def elaborate(self, platform) -> Module:
@@ -252,9 +265,10 @@ class MultiportFifo(Elaboratable):
                         with Transaction().body(m, request=ordered_read_outs[j].valid):
                             m.d.comb += ordered_read_outs[j].data.eq(sub_fifos[(i + j) % self.fifo_count].read(m))
                     for j in range(self.port_count + 1):
-                        with m.If(read_grants_count):
-                            m.next = f"current_read_{(i+j)%self.fifo_count}"
-
+                        with m.Switch(read_grants_count):
+                            with m.Case(j):
+                                name_of_next = f"current_read_{(i+j)%self.fifo_count}"
+                                m.next = name_of_next
         for i in range(self.port_count):
 
             @def_method(m, self._read_methods[i], ready=read_ready)
@@ -268,6 +282,8 @@ class MultiportFifo(Elaboratable):
         write_ins = [Record(self.layout) for _ in self._write_methods]
         ordered_write_ins = self.order(m, Array(write_ins), write_granttts, data_direction_from_out=False)
 
+# TODO FIX BUG with ready signals
+
         with m.FSM():
             for i in range(self.fifo_count):
                 with m.State(f"current_write_{i}"):
@@ -276,8 +292,9 @@ class MultiportFifo(Elaboratable):
                         with Transaction().body(m, request=ordered_write_ins[j].valid):
                             sub_fifos[(i + j) % self.fifo_count].write(m, ordered_write_ins[j].data)
                     for j in range(self.port_count + 1):
-                        with m.If(write_granttts_count):
-                            m.next = f"current_write_{(i+j)%self.fifo_count}"
+                        with m.Switch(write_granttts_count):
+                            with m.Case(j):
+                                m.next = f"current_write_{(i+j)%self.fifo_count}"
 
         for i in range(self.port_count):
 
