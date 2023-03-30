@@ -7,7 +7,7 @@ from coreblocks.scheduler.wakeup_select import WakeupSelect
 from coreblocks.transactions import Method
 from coreblocks.utils.debug_signals import auto_debug_signals, SignalBundle
 from coreblocks.utils.protocols import FuncUnit, FuncBlock
-from coreblocks.transactions.lib import Collector
+from coreblocks.transactions.lib import Collector, MethodProduct
 
 __all__ = ["RSFuncBlock", "RSBlockComponent"]
 
