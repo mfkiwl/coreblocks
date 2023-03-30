@@ -102,7 +102,7 @@ class TestBasicFifo(TestCaseWithSimulator):
 
         dones = [ False for _ in range(self.port_count)]
 
-        cycles = 6
+        cycles = 256
         random.seed(44)
 
         def source_generator(port_id : int):
@@ -150,8 +150,8 @@ class TestBasicFifo(TestCaseWithSimulator):
             writed.sort()
             INF_INT=1000000000
             clears.append((INF_INT,-1))
-            print(readed)
-            print(writed)
+#            print(readed)
+#            print(writed)
             
             write_it=0
             clear_it=0

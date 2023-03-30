@@ -258,12 +258,14 @@ class MultiportFifo(Elaboratable):
         read_grants_count = popcount(m, read_grants)
         read_outs = [Record(self.layout) for _ in self._read_methods]
         ordered_read_outs = self.order(m, Array(read_outs), read_grants)
+        ordered_read_ready = self.order(m, Array(read_ready_list), read_grants)
 
         with m.FSM():
             for i in range(self.fifo_count):
                 with m.State(f"current_read_{i}"):
                     for j in range(self.port_count):
                         selected_sub_fifo = sub_fifos[(i + j) % self.fifo_count]
+                        #m.d.comb += ordered_read_ready[j].eq(selected_sub_fifo.read.ready) <- should be
                         m.d.comb += read_ready_list[j].eq(selected_sub_fifo.read.ready)
                         with Transaction().body(m, request=ordered_read_outs[j].valid):
                             m.d.comb += ordered_read_outs[j].data.eq(selected_sub_fifo.read(m))
@@ -287,6 +289,7 @@ class MultiportFifo(Elaboratable):
         write_granttts_count = popcount(m, write_granttts)
         write_ins = [Record(self.layout) for _ in self._write_methods]
         ordered_write_ins = self.order(m, Array(write_ins), write_granttts, data_direction_from_out=False)
+        ordered_write_ready = self.order(m, Array(write_ready_list), write_granttts)
 
         write_start_state = "current_write_0" if self.init is None else f"current_write_{len(self.init)%self.fifo_count}"
         with m.FSM(write_start_state):
@@ -294,6 +297,7 @@ class MultiportFifo(Elaboratable):
                 with m.State(f"current_write_{i}"):
                     for j in range(self.port_count):
                         selected_sub_fifo = sub_fifos[(i + j) % self.fifo_count]
+                        #m.d.comb += ordered_write_ready[j].eq(selected_sub_fifo.write.ready) <- should be
                         m.d.comb += write_ready_list[j].eq(selected_sub_fifo.write.ready)
                         with Transaction().body(m, request=ordered_write_ins[j].valid):
                             selected_sub_fifo.write(m, ordered_write_ins[j].data)

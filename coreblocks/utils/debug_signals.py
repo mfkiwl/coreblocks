@@ -34,8 +34,7 @@ def auto_debug_signals(thing) -> SignalBundle:
             submap={}
             for i, e in enumerate(a):
                 if isinstance(e, HasDebugSignals):
-                    e.name = f"{v}[{i}]"
-                    submap[e.name] = e.debug_signals()
+                    submap[f"{v}[{i}]"] = e.debug_signals()
                 else:
                     sublist = auto_debug_signals(e)
                     if sublist:
