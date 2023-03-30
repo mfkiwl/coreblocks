@@ -227,7 +227,7 @@ class MultiportFifo(Elaboratable):
         Put all ready elements from `to_order` to the begining of `out`
         """
         count = len(to_order)
-        selected_counters = [ Signal(log2_int(count)) for _ in range(count+1)]
+        selected_counters = [ Signal(range(count)) for _ in range(count+1)]
         out = Array([Record(self._selection_layout) for _ in range(count)])
 
         for j in range(count):

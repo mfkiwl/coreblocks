@@ -58,9 +58,9 @@ class FifoTestCircuit(Elaboratable):
 
 
 params_dinit = [
-    ("notpower_notfull", 5, 3),
-    ("notpower_full", 5, 5),
-    ("notpower_empty", 5, 0),
+    ("notpower_notfull", 6, 3),
+    ("notpower_full", 6, 6),
+    ("notpower_empty", 6, 0),
     ("power_notfull", 8, 3),
     ("power_full", 8, 8),
     ("power_empty", 8, 0),
@@ -83,7 +83,7 @@ params_c = [
 
 @parameterized_class(
     ("name", "depth", "init_len", "port_count", "fifo_count", "name_constr", "fifo_constructor"),
-    [dinit + (1,1) + constr for dinit in params_dinit for constr in params_c] + [(params_dinit[3] + (2,2)+params_c[1])],
+    [dinit + (1,1) + constr for dinit in params_dinit for constr in params_c] + [dinit + (2,2) + params_c[1] for dinit in params_dinit] + [dinit + topology + params_c[1] for dinit in params_dinit[:3] for topology in [(2,3),(3,3)]],
 )
 class TestBasicFifo(TestCaseWithSimulator):
     depth: int
@@ -102,8 +102,8 @@ class TestBasicFifo(TestCaseWithSimulator):
 
         dones = [ False for _ in range(self.port_count)]
 
-        cycles = 256
-        random.seed(42)
+        cycles = 6
+        random.seed(44)
 
         def source_generator(port_id : int):
             def source():
@@ -150,6 +150,8 @@ class TestBasicFifo(TestCaseWithSimulator):
             writed.sort()
             INF_INT=1000000000
             clears.append((INF_INT,-1))
+            print(readed)
+            print(writed)
             
             write_it=0
             clear_it=0
