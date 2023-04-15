@@ -31,3 +31,8 @@ class InstructionCommitKey(UnifierKey):
 @dataclass(frozen=True)
 class BranchResolvedKey(UnifierKey):
     unifier: type[Unifier] = field(default=Collector, init=False)
+
+
+@dataclass(frozen=True)
+class ClearKey(UnifierKey):
+    unifier: type[Unifier] = field(default=MethodProduct, init=False)
