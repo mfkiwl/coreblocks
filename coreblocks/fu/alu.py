@@ -19,13 +19,10 @@ from coreblocks.utils.protocols import FuncUnit
 class AluFn(DecoderManager):
     class Fn(IntFlag):
         ADD = auto()  # Addition
-        SLL = auto()  # Logic left shift
         XOR = auto()  # Bitwise xor
-        SRL = auto()  # Logic right shift
         OR = auto()  # Bitwise or
         AND = auto()  # Bitwise and
         SUB = auto()  # Subtraction
-        SRA = auto()  # Arithmetic right shift
         SLT = auto()  # Set if less than (signed)
         SLTU = auto()  # Set if less than (unsigned)
         # ZBA extension
@@ -43,9 +40,6 @@ class AluFn(DecoderManager):
             (cls.Fn.XOR, OpType.LOGIC, Funct3.XOR),
             (cls.Fn.OR, OpType.LOGIC, Funct3.OR),
             (cls.Fn.AND, OpType.LOGIC, Funct3.AND),
-            (cls.Fn.SLL, OpType.SHIFT, Funct3.SLL),
-            (cls.Fn.SRL, OpType.SHIFT, Funct3.SR, Funct7.SL),
-            (cls.Fn.SRA, OpType.SHIFT, Funct3.SR, Funct7.SA),
             (cls.Fn.SH1ADD, OpType.ADDRESS_GENERATION, Funct3.SH1ADD, Funct7.SH1ADD),
             (cls.Fn.SH2ADD, OpType.ADDRESS_GENERATION, Funct3.SH2ADD, Funct7.SH2ADD),
             (cls.Fn.SH3ADD, OpType.ADDRESS_GENERATION, Funct3.SH3ADD, Funct7.SH3ADD),
@@ -71,20 +65,14 @@ class Alu(Elaboratable):
         with OneHotSwitch(m, self.fn) as OneHotCase:
             with OneHotCase(AluFn.Fn.ADD):
                 m.d.comb += self.out.eq(self.in1 + self.in2)
-            with OneHotCase(AluFn.Fn.SLL):
-                m.d.comb += self.out.eq(self.in1 << self.in2[0:xlen_log])
             with OneHotCase(AluFn.Fn.XOR):
                 m.d.comb += self.out.eq(self.in1 ^ self.in2)
-            with OneHotCase(AluFn.Fn.SRL):
-                m.d.comb += self.out.eq(self.in1 >> self.in2[0:xlen_log])
             with OneHotCase(AluFn.Fn.OR):
                 m.d.comb += self.out.eq(self.in1 | self.in2)
             with OneHotCase(AluFn.Fn.AND):
                 m.d.comb += self.out.eq(self.in1 & self.in2)
             with OneHotCase(AluFn.Fn.SUB):
                 m.d.comb += self.out.eq(self.in1 - self.in2)
-            with OneHotCase(AluFn.Fn.SRA):
-                m.d.comb += self.out.eq(Cat(self.in1, Repl(self.in1[xlen - 1], xlen)) >> self.in2[0:xlen_log])
             with OneHotCase(AluFn.Fn.SLT):
                 m.d.comb += self.out.eq(self.in1.as_signed() < self.in2.as_signed())
             with OneHotCase(AluFn.Fn.SLTU):
