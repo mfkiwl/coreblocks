@@ -4,9 +4,9 @@ from amaranth import *
 
 from coreblocks.params import Funct3, GenParams, FuncUnitLayouts, OpType, Funct7, FunctionalComponentParams
 from coreblocks.transactions import Method
-from coreblocks.transactions.lib import FIFO
 from coreblocks.transactions.core import def_method
 from coreblocks.utils import OneHotSwitch
+from coreblocks.utils.fifo import BasicFifo
 from coreblocks.utils.protocols import FuncUnit
 
 from coreblocks.fu.fu_decoder import DecoderManager
@@ -99,12 +99,13 @@ class ZbsUnit(Elaboratable):
         self.gen_params = gen_params
         self.issue = Method(i=layouts.issue)
         self.accept = Method(o=layouts.accept)
+        self.clear = Method()
 
     def elaborate(self, platform):
         m = Module()
 
         m.submodules.zbs = zbs = Zbs(self.gen_params)
-        m.submodules.result_fifo = result_fifo = FIFO(self.gen_params.get(FuncUnitLayouts).accept, 2)
+        m.submodules.result_fifo = result_fifo = BasicFifo(self.gen_params.get(FuncUnitLayouts).accept, 2)
         m.submodules.decoder = decoder = ZbsFunction.get_decoder(self.gen_params)
 
         @def_method(m, self.accept)
@@ -120,6 +121,8 @@ class ZbsUnit(Elaboratable):
             m.d.comb += zbs.in2.eq(Mux(arg.imm, arg.imm, arg.s2_val))
 
             result_fifo.write(m, rob_id=arg.rob_id, result=zbs.result, rp_dst=arg.rp_dst)
+
+        self.clear.proxy(m, result_fifo.clear)
 
         return m
 

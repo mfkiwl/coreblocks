@@ -137,9 +137,7 @@ class AluFuncUnit(Elaboratable):
 
             fifo.write(m, rob_id=arg.rob_id, result=alu.out, rp_dst=arg.rp_dst)
 
-        @def_method(m, self.clear)
-        def _():
-            fifo.clear(m)
+        self.clear.proxy(m, fifo.clear)
 
         return m
 

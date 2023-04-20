@@ -23,7 +23,7 @@ class FuncUnit(HasElaborate, Protocol):
     optypes: set[OpType]
     issue: Method
     accept: Method
-    # TODO: add clear: Method once all FUs are updated
+    clear: Method
 
 
 class FuncBlock(HasElaborate, Protocol):
@@ -32,3 +32,4 @@ class FuncBlock(HasElaborate, Protocol):
     select: Method
     update: Method
     get_result: Method
+    clear: Method
