@@ -193,7 +193,7 @@ class CSRUnit(Elaboratable):
         self.dependency_manager = gen_params.get(DependencyManager)
 
         self.rob_empty = rob_single_instr
-        self.fetch_continue = Method(o=gen_params.get(FetchLayouts).branch_verify)
+        self.fetch_continue = Method(o=gen_params.get(FetchLayouts).branch_verify_in)
 
         # Standard RS interface
         self.csr_layouts = gen_params.get(CSRLayouts)
@@ -202,6 +202,7 @@ class CSRUnit(Elaboratable):
         self.insert = Method(i=self.csr_layouts.rs_insert_in)
         self.update = Method(i=self.csr_layouts.rs_update_in)
         self.get_result = Method(o=self.fu_layouts.accept)
+        self.clear = Method()
 
         self.regfile: dict[int, tuple[Method, Method]] = {}
 
@@ -322,6 +323,10 @@ class CSRUnit(Elaboratable):
         @def_method(m, self.fetch_continue, accepted)
         def _():
             return {"next_pc": instr.pc + self.gen_params.isa.ilen_bytes}
+
+        @def_method(m, self.clear)
+        def _():
+            pass
 
         return m
 

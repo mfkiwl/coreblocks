@@ -3,7 +3,7 @@ from amaranth import *
 from coreblocks.params.dependencies import DependencyManager
 from coreblocks.stages.func_blocks_unifier import FuncBlocksUnifier
 from coreblocks.transactions.core import Transaction
-from coreblocks.transactions.lib import FIFO, ConnectTrans, MethodProduct, ConnectAndTransformTrans
+from coreblocks.transactions.lib import ConnectAndTransformTrans
 from coreblocks.params.layouts import *
 from coreblocks.params.keys import InstructionCommitKey, BranchResolvedKey, WishboneDataKey, ClearKey
 from coreblocks.params.genparams import GenParams
