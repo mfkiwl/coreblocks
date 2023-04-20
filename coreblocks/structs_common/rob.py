@@ -1,5 +1,5 @@
 from amaranth import *
-from ..transactions import Method, def_method
+from ..transactions import Method, def_method, Priority
 from ..params import GenParams, ROBLayouts
 from ..params.dependencies import DependencyManager
 from ..params.keys import ROBSingleKey
@@ -52,6 +52,9 @@ class ReorderBuffer(Elaboratable):
         @def_method(m, self.can_flush)
         def _():
             return start_idx != end_idx
+
+        self.flush.add_conflict(self.put, priority=Priority.LEFT)
+        self.flush.add_conflict(self.retire, priority=Priority.LEFT)
 
         @def_method(m, self.flush)
         def _():
