@@ -77,7 +77,7 @@ class RSFuncBlock(Elaboratable):
 
         m.submodules.collector = collector = Collector([func_unit.accept for func_unit in self.func_units])
         m.submodules.clear_product = clear_product = MethodProduct(
-            [func_unit.clear for func_unit in self.func_units] + [rs.clear]
+            [func_unit.clear for func_unit in self.func_units] + [self.rs.clear]
         )
 
         self.insert.proxy(m, self.rs.insert)
