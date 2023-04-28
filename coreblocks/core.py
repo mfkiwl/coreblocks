@@ -145,7 +145,7 @@ class Core(Elaboratable):
             free_rf_put=free_rf_fifo.write,
             rf_free=rf.free,
             lsu_commit=self.func_blocks_unifier.get_extra_method(InstructionCommitKey()),
-            trigger_int=self.int_coordinator.trigger,
+            int_coordinator=self.int_coordinator
         )
 
         m.submodules.csr_generic = GenericCSRRegisters(self.gen_params)
